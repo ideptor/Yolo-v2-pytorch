@@ -11,7 +11,12 @@ from src.loss import YoloLoss
 from src.yolo_net import Yolo
 from tensorboardX import SummaryWriter
 import shutil
+from tqdm import tqdm
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning) 
+import warnings
+warnings.filterwarnings('ignore')
 
 def get_args():
     parser = argparse.ArgumentParser("You Only Look Once: Unified, Real-Time Object Detection")
@@ -69,18 +74,20 @@ def train(opt):
     test_set = VOCDataset(opt.data_path, opt.year, opt.test_set, opt.image_size, is_training=False)
     test_generator = DataLoader(test_set, **test_params)
 
-    if torch.cuda.is_available():
-        if opt.pre_trained_model_type == "model":
-            model = torch.load(opt.pre_trained_model_path)
-        else:
-            model = Yolo(training_set.num_classes)
-            model.load_state_dict(torch.load(opt.pre_trained_model_path))
-    else:
-        if opt.pre_trained_model_type == "model":
-            model = torch.load(opt.pre_trained_model_path, map_location=lambda storage, loc: storage)
-        else:
-            model = Yolo(training_set.num_classes)
-            model.load_state_dict(torch.load(opt.pre_trained_model_path, map_location=lambda storage, loc: storage))
+    model = Yolo(training_set.num_classes)
+    # if torch.cuda.is_available():
+    #     model = Yolo(training_set.num_classes)
+    #     if opt.pre_trained_model_type == "model":
+    #         model = torch.load(opt.pre_trained_model_path)
+    #     else:
+    #         model = Yolo(training_set.num_classes)
+    #         model.load_state_dict(torch.load(opt.pre_trained_model_path))
+    # else:
+    #     if opt.pre_trained_model_type == "model":
+    #         model = torch.load(opt.pre_trained_model_path, map_location=lambda storage, loc: storage)
+    #     else:
+    #         model = Yolo(training_set.num_classes)
+    #         model.load_state_dict(torch.load(opt.pre_trained_model_path, map_location=lambda storage, loc: storage))
     # The following line will re-initialize weight for the last layer, which is useful
     # when you want to retrain the model based on my trained weights. if you uncomment it,
     # you will see the loss is already very small at the beginning.
@@ -105,7 +112,8 @@ def train(opt):
         if str(epoch) in learning_rate_schedule.keys():
             for param_group in optimizer.param_groups:
                 param_group['lr'] = learning_rate_schedule[str(epoch)]
-        for iter, batch in enumerate(training_generator):
+        pbar = tqdm(enumerate(training_generator))
+        for iter, batch in pbar:
             image, label = batch
             if torch.cuda.is_available():
                 image = Variable(image.cuda(), requires_grad=True)
@@ -116,16 +124,26 @@ def train(opt):
             loss, loss_coord, loss_conf, loss_cls = criterion(logits, label)
             loss.backward()
             optimizer.step()
-            print("Epoch: {}/{}, Iteration: {}/{}, Lr: {}, Loss:{:.2f} (Coord:{:.2f} Conf:{:.2f} Cls:{:.2f})".format(
+            # pbar.set_description("Epoch: {}/{}, Iteration: {}/{}, Lr: {}, Loss:{:.2f} (Coord:{:.2f} Conf:{:.2f} Cls:{:.2f})".format(
+            #     epoch + 1,
+            #     opt.num_epoches,
+            #     iter + 1,
+            #     num_iter_per_epoch,
+            #     optimizer.param_groups[0]['lr'],
+            #     loss,
+            #     loss_coord,
+            #     loss_conf,
+            #     loss_cls))
+            pbar.set_description("Epoch: {}/{}, Iteration: {}/{}, Lr: {}, Loss:{:.2f}".format(
                 epoch + 1,
                 opt.num_epoches,
                 iter + 1,
                 num_iter_per_epoch,
                 optimizer.param_groups[0]['lr'],
-                loss,
-                loss_coord,
-                loss_conf,
-                loss_cls))
+                loss))
+                # loss_coord,
+                # loss_conf,
+                # loss_cls))
             writer.add_scalar('Train/Total_loss', loss, epoch * num_iter_per_epoch + iter)
             writer.add_scalar('Train/Coordination_loss', loss_coord, epoch * num_iter_per_epoch + iter)
             writer.add_scalar('Train/Confidence_loss', loss_conf, epoch * num_iter_per_epoch + iter)
